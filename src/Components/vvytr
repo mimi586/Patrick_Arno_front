@@ -1,0 +1,270 @@
+import { useState, useEffect } from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Button,
+  Container,
+  Box,
+  Typography,
+  TextField,
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import axios from "axios";
+import Add_imp from "./Crud_impots/Add_imp";
+import Update_imp from "./Crud_impots/Update_imp";
+import Swal from "sweetalert2";
+import jsPDF from "jspdf";
+
+function Impots({ showButtons = true }) {
+  const [open, setOpen] = useState(false);
+  const [openModify, setOpenModify] = useState(false);
+  const [selectedImpots, setSelectedImpots] = useState(null);
+  const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [searchCriteria, setSearchCriteria] = useState({
+    date: "",
+    montant: "",
+    reference: "",
+  });
+
+  const handleOpenModify = (impot) => {
+    setSelectedImpots(impot);
+    setOpenModify(true);
+  };
+
+  const handleCloseModify = () => {
+    setOpenModify(false);
+  };
+
+  const handleOpen = () => {
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    fetchImpots();
+  }, []);
+
+  const fetchImpots = async () => {
+    try {
+      const response = await axios.get(
+        "http://localhost:8081/fetch_imp/fetch_imp"
+      );
+      setData(response.data);
+      setFilteredData(response.data); // Initialiser les données filtrées
+    } catch (error) {
+      console.error("Error fetching impôts:", error);
+    }
+  };
+
+  const handleDeleteImpots = async (numPayements) => {
+    try {
+      await axios.delete(
+        `http://localhost:8081/delete_imp/delete_imp/${numPayements}`
+      );
+      fetchImpots();
+      Swal.fire({
+        icon: "success",
+        title: "Impôt supprimé avec succès",
+      });
+    } catch (error) {
+      console.error("Error deleting impôt:", error);
+    }
+  };
+
+  const handleConfirmDelete = (numPayements) => {
+    Swal.fire({
+      title: "Êtes-vous sûr ?",
+      text: "Cette action est irréversible !",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Oui, supprimer !",
+    }).then((result) => {
+      if (result.isConfirmed) {
+        handleDeleteImpots(numPayements);
+      }
+    });
+  };
+
+  // Formater la date en jj/mm/aaaa
+  const formatDate = (date) => {
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Fonction pour filtrer par un seul critère avec insensibilité à la casse
+  const handleSearch = () => {
+    let filtered = data;
+
+    if (searchCriteria.date) {
+      filtered = filtered.filter((item) =>
+        formatDate(item.DateP).toLowerCase().includes(searchCriteria.date.toLowerCase())
+      );
+    } else if (searchCriteria.montant) {
+      filtered = filtered.filter(
+        (item) => item.Montant.toString() === searchCriteria.montant
+      );
+    } else if (searchCriteria.reference) {
+      filtered = filtered.filter((item) =>
+        item.ReferencePaiement.toLowerCase().includes(searchCriteria.reference.toLowerCase())
+      );
+    }
+
+    setFilteredData(filtered);
+  };
+
+  // Trier les données par date croissante
+  const sortedData = [...filteredData].sort((a, b) => {
+    const dateA = new Date(a.DateP);
+    const dateB = new Date(b.DateP);
+    return dateA - dateB;
+  });
+
+  const confirmAndGeneratePDF = (impot) => {
+    Swal.fire({
+      title: "Confirmer la génération du PDF",
+      text: "Voulez-vous générer un PDF pour cet impôt ?",
+      icon: "info",
+      showCancelButton: true,
+      confirmButtonText: "Oui, générer",
+      cancelButtonText: "Annuler",
+    }).then((result) => {
+      if (result.isConfirmed) {
+        generatePDF(impot);
+      }
+    });
+  };
+
+  const generatePDF = (impot) => {
+    const pdf = new jsPDF();
+
+    // Titre
+    pdf.setFontSize(18);
+    pdf.text("Détails du Paiement d'Impôt", 20, 20);
+
+    // Détails de l'impôt
+    pdf.setFontSize(12);
+    pdf.text(`Montant : ${impot.Montant} Ar`, 20, 40);
+    pdf.text(`Date de paiement : ${formatDate(impot.DateP)}`, 20, 50);
+    pdf.text(`Type d'impôt : ${impot.TypeImpots}`, 20, 60);
+    pdf.text(`Mode de paiement : ${impot.ModePaiement}`, 20, 70);
+    pdf.text(`Numéro de compte : ${impot.NumCompte}`, 20, 80);
+    pdf.text(`Référence de paiement : ${impot.ReferencePaiement}`, 20, 90);
+
+    // Enregistrer le PDF
+    pdf.save(`Impot_${impot.NumPayements}.pdf`);
+  };
+
+  return (
+    <Container>
+      <Box sx={{ textAlign: "center", my: 3 }}>
+        <Typography variant="h3">Liste des paiements</Typography>
+      </Box>
+
+      <Box sx={{ my: 2 }}>
+        {showButtons && (
+          <Button variant="contained" color="info" onClick={handleOpen}>
+            <AddIcon /> Payer
+          </Button>
+        )}
+
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mt: 2 }}>
+          <TextField
+            label="Rechercher par date (jj/mm/aaaa)"
+            value={searchCriteria.date}
+            onChange={(e) =>
+              setSearchCriteria({ date: e.target.value, montant: "", reference: "" })
+            }
+          />
+          <TextField
+            label="Rechercher par montant"
+            value={searchCriteria.montant}
+            onChange={(e) =>
+              setSearchCriteria({ date: "", montant: e.target.value, reference: "" })
+            }
+          />
+          <TextField
+            label="Rechercher par référence"
+            value={searchCriteria.reference}
+            onChange={(e) =>
+              setSearchCriteria({ date: "", montant: "", reference: e.target.value })
+            }
+          />
+          <Button variant="contained" color="primary" onClick={handleSearch}>
+            Rechercher
+          </Button>
+        </Box>
+      </Box>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Montant</TableCell>
+              <TableCell>Date de paiement</TableCell>
+              <TableCell>Type d'impôt</TableCell>
+              <TableCell>Mode de paiement</TableCell>
+              <TableCell>Numéro de compte</TableCell>
+              <TableCell>Référence de paiement</TableCell>
+              <TableCell>Action</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {sortedData.map((impot) => (
+              <TableRow key={impot.NumPayements}>
+                <TableCell>{impot.Montant} Ar</TableCell>
+                <TableCell>{formatDate(impot.DateP)}</TableCell>
+                <TableCell>{impot.TypeImpots}</TableCell>
+                <TableCell>{impot.ModePaiement}</TableCell>
+                <TableCell>{impot.NumCompte}</TableCell>
+                <TableCell>{impot.ReferencePaiement}</TableCell>
+                <TableCell>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    onClick={() => handleOpenModify(impot)}
+                  >
+                    <EditIcon />
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={() => handleConfirmDelete(impot.NumPayements)}
+                    sx={{ ml: 1 }}
+                  >
+                    <DeleteIcon />
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={() => confirmAndGeneratePDF(impot)}
+                    sx={{ ml: 1 }}
+                  >
+                    Générer PDF
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Container>
+  );
+}
+
+export default Impots;
